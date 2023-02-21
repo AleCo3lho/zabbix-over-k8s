@@ -1,0 +1,44 @@
+zabbix_export:
+  version: '6.2'
+  date: '2023-02-21T01:25:39Z'
+  template_groups:
+    -
+      uuid: 7df96b18c230490a9a0a9e2307226338
+      name: Templates
+  templates:
+    -
+      uuid: b7a4663d50b54f99b020cdfec3551605
+      template: 'URL Simple check'
+      name: 'URL Simple check'
+      description: 'Template para monitoramento WEB, basicamente um CURL'
+      groups:
+        -
+          name: Templates
+      httptests:
+        -
+          uuid: 0c6b66b8499f4c2ab2489c3563e6fbf4
+          name: 'Website Health Check: {$WEB.URL}'
+          agent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.132 Safari/537.36'
+          steps:
+            -
+              name: 'Webpage Availability'
+              url: '{$WEB.URL}'
+              status_codes: '200, 401, 403'
+      macros:
+        -
+          macro: '{$WEB.URL}'
+  triggers:
+    -
+      uuid: b1be1d80ec3e43dd84f7443fdf26b836
+      expression: 'avg(/URL Simple check/web.test.time[Website Health Check: {$WEB.URL},Webpage Availability,resp],10m)>8'
+      recovery_mode: RECOVERY_EXPRESSION
+      recovery_expression: 'avg(/URL Simple check/web.test.time[Website Health Check: {$WEB.URL},Webpage Availability,resp],10m)<8'
+      name: 'Website is SLOW ({ITEM.LASTVALUE}): {$WEB.URL}'
+      priority: AVERAGE
+    -
+      uuid: ad0af108a32d4df5a720bcfe5ca64870
+      expression: 'last(/URL Simple check/web.test.fail[Website Health Check: {$WEB.URL}])<>0'
+      recovery_mode: RECOVERY_EXPRESSION
+      recovery_expression: 'last(/URL Simple check/web.test.fail[Website Health Check: {$WEB.URL}])<>1'
+      name: 'Website not available: {$WEB.URL}'
+      priority: HIGH

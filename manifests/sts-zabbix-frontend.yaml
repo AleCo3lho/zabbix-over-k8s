@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  namespace: zabbix
+  labels:
+    zabbix-app: zabbix-frontend
+  name: zabbix-frontend
+spec:
+  selector:
+    matchLabels:
+      zabbix-app: zabbix-frontend
+  serviceName: "zabbix-frontend"
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        zabbix-app: zabbix-frontend
+    spec:
+      containers:
+      - env:
+        - name:  ZBX_DEBUGLEVEL
+          value: "4"
+        - name: MYSQL_DATABASE
+          valueFrom:
+            configMapKeyRef:
+              key: MYSQL_DATABASE
+              name: zabbix-app   
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: MYSQL_ROOT_PASSWORD
+              name: zabbix-app
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: MYSQL_PASSWORD
+              name: zabbix-app
+        - name: ZBX_SERVER_HOST
+          valueFrom:
+            configMapKeyRef:
+              key: ZBX_SERVER_HOST
+              name: zabbix-app
+        - name: ZBX_SERVER_NAME
+          valueFrom:
+            configMapKeyRef:
+              key: ZBX_SERVER_NAME
+              name: zabbix-app
+        image: zabbix/zabbix-web-apache-mysql:6.2.7-ubuntu
+        startupProbe:
+          httpGet:
+            path: /
+            port: 8080
+          failureThreshold: 30
+          periodSeconds: 2
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          failureThreshold: 3
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+        name: zabbix-web-nginx-mysql
+        ports:
+        - containerPort: 80
+        resources: {}

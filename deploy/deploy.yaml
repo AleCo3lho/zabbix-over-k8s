@@ -1,0 +1,375 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: zabbix
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: zabbix-app
+  namespace: zabbix
+data:
+  MYSQL_DATABASE: zabbix
+  MYSQL_USER: zabbix
+  ZBX_ENABLE_SNMP_TRAPS: "true"
+  ZBX_JAVAGATEWAY_ENABLE: "true"
+  ZBX_STARTJAVAPOLLERS: "1"
+  ZBX_STARTHTTPPOLLERS: "10"
+  ZBX_SERVER_NAME: Composed installation
+  ZBX_SERVER_HOST: "zabbix-server"
+  ZBX_SERVER_PORT: "10051"
+  DB_SERVER_HOST: "mysql-server"
+  PHP_TZ: "America/Sao_Paulo"
+  ZBX_HOSTNAME: "Zabbix server"
+  ZBX_DEBUGLEVEL: "4"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: zabbix-app
+  namespace: zabbix
+data:
+  MYSQL_USER: y6v2eYFgm5MjtUpF
+  MYSQL_ROOT_PASSWORD: 3A0b38ae2N1kwZca
+  MYSQL_PASSWORD: y6v2eYFgm5MjtUpF
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  namespace: zabbix
+  name: mysql-server
+  labels:
+    app: mysql-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql-server
+  serviceName: mysql-server
+  template:
+    metadata:
+      labels:
+        app: mysql-server
+    spec:
+      containers:
+        - image: mysql:8.0.32
+          name: mysql-server
+          args:
+            - "--default-authentication-plugin=mysql_native_password"
+            - --character-set-server=utf8
+            - --collation-server=utf8_bin
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: zabbix-app
+                  key: MYSQL_ROOT_PASSWORD
+            - name: MYSQL_DATABASE
+              valueFrom:
+                configMapKeyRef:
+                  key: MYSQL_DATABASE
+                  name: zabbix-app
+            - name: MYSQL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: zabbix-app
+                  key:  MYSQL_USER
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: zabbix-app
+                  key:  MYSQL_PASSWORD
+          resources: {}
+          ports:
+            - containerPort: 3306
+              name: mysql-server
+          volumeMounts:
+            - name: mysql-persistent-storage
+              mountPath: /var/lib/mysql
+      volumes:
+        - name: mysql-persistent-storage
+          persistentVolumeClaim:
+            claimName: mysql-pv-claim
+---
+kind: StorageClass
+apiVersion: storage.k8s.io/v1
+metadata:
+  name: manual
+  namespace: zabbix
+provisioner: docker.io/hostpath
+reclaimPolicy: Retain
+---
+kind: PersistentVolume
+apiVersion: v1
+metadata:
+  namespace: zabbix
+  name: mysql-pv-volume
+  labels:
+    type: local
+    app: mysql-server
+spec:
+  storageClassName: manual
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: /data/mysql   
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  namespace: zabbix
+  name: mysql-pv-claim
+  labels:
+    app: mysql-server
+spec:
+  storageClassName: manual
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: zabbix
+  name: mysql-server
+  labels:
+    app: mysql-server
+spec:
+  type: ClusterIP
+  ports:
+    - port: 3306
+  selector:
+    app: mysql-server
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  namespace: zabbix
+  labels:
+    zabbix-app: zabbix-agent
+  name: zabbix-agent
+spec:
+  serviceName: "zabbix-agent"
+  replicas: 1
+  selector:
+    matchLabels:
+     zabbix-app: zabbix-agent
+  template:
+    metadata:
+      labels:
+        zabbix-app: zabbix-agent
+    spec:   
+      containers:
+      - env:
+        - name: ZBX_SERVER_HOST
+          valueFrom:
+            configMapKeyRef:
+              key: ZBX_SERVER_HOST
+              name: zabbix-app
+        - name: ZBX_PASSIVESERVERS
+          value: "0.0.0.0/0"
+        - name: ZBX_HOSTNAME
+          valueFrom:
+            configMapKeyRef:
+              key: ZBX_HOSTNAME
+              name: zabbix-app
+        image: zabbix/zabbix-agent2:6.2.7-alpine
+        name: zabbix-agent
+        ports:
+        - containerPort: 10050
+        resources: {}
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - mountPath: /etc/zabbix/zabbix_agentd.d
+          name: zabbix-agent-claim2
+          readOnly: true
+      restartPolicy: Always
+      volumes:
+      - name: zabbix-agent-claim2
+        persistentVolumeClaim:
+          claimName: zabbix-agent-claim2
+          readOnly: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: zabbix
+  labels:
+    zabbix-app: zabbix-agent
+  name: zabbix-agent
+spec:
+  ports:
+  - name: "10050"
+    port: 10050
+    targetPort: 10050
+  selector:
+    zabbix-app: zabbix-agent
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  namespace: zabbix
+  labels:
+     zabbix-app: zabbix-agent
+  name: zabbix-agent-claim2
+spec:
+  accessModes:
+  - ReadOnlyMany
+  resources:
+    requests:
+      storage: 100Mi
+---
+apiVersion:  apps/v1
+kind: StatefulSet
+metadata:
+  namespace: zabbix
+  labels:
+    zabbix-app: zabbix-server
+  name: zabbix-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      zabbix-app: zabbix-server  
+  serviceName: "zabbix-server"
+  template:
+    metadata:
+      labels:
+        zabbix-app: zabbix-server
+    spec:
+      containers:
+      - image: zabbix/zabbix-server-mysql:6.2.7-alpine
+        name: zabbix-server
+        env:
+          - name: ZBX_STARTHTTPPOLLERS
+            valueFrom:
+              configMapKeyRef:
+                key: ZBX_STARTHTTPPOLLERS
+                name: zabbix-app
+          - name: MYSQL_ROOT_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: zabbix-app
+                key: MYSQL_ROOT_PASSWORD
+          - name: MYSQL_DATABASE
+            valueFrom:
+              configMapKeyRef:
+                key: MYSQL_DATABASE
+                name: zabbix-app
+          - name: MYSQL_USER
+            valueFrom:
+              secretKeyRef:
+                name: zabbix-app
+                key:  MYSQL_USER
+          - name: MYSQL_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: zabbix-app
+                key:  MYSQL_PASSWORD
+        ports:
+        - containerPort: 10051
+        resources: {}
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: zabbix
+  labels:
+    zabbix-app: zabbix-server
+  name: zabbix-server
+spec:
+  ports:
+  - name: "10051"
+    port: 10051
+    targetPort: 10051
+  selector:
+    zabbix-app: zabbix-server
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  namespace: zabbix
+  labels:
+    zabbix-app: zabbix-frontend
+  name: zabbix-frontend
+spec:
+  selector:
+    matchLabels:
+      zabbix-app: zabbix-frontend
+  serviceName: "zabbix-frontend"
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        zabbix-app: zabbix-frontend
+    spec:
+      containers:
+      - env:
+        - name:  ZBX_DEBUGLEVEL
+          value: "4"
+        - name: MYSQL_DATABASE
+          valueFrom:
+            configMapKeyRef:
+              key: MYSQL_DATABASE
+              name: zabbix-app   
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: MYSQL_ROOT_PASSWORD
+              name: zabbix-app
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: MYSQL_PASSWORD
+              name: zabbix-app
+        - name: ZBX_SERVER_HOST
+          valueFrom:
+            configMapKeyRef:
+              key: ZBX_SERVER_HOST
+              name: zabbix-app
+        - name: ZBX_SERVER_NAME
+          valueFrom:
+            configMapKeyRef:
+              key: ZBX_SERVER_NAME
+              name: zabbix-app
+        image: zabbix/zabbix-web-apache-mysql:6.2.7-ubuntu
+        startupProbe:
+          httpGet:
+            path: /
+            port: 8080
+          failureThreshold: 30
+          periodSeconds: 2
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          failureThreshold: 3
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+        name: zabbix-web-nginx-mysql
+        ports:
+        - containerPort: 80
+        resources: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: zabbix
+  labels:
+    zabbix-app: zabbix-frontend
+  name: zabbix-frontend
+spec:
+  type: ClusterIP
+  ports:
+  - name: "http"
+    port: 8080
+    targetPort: 8080
+  selector:
+    zabbix-app: zabbix-frontend

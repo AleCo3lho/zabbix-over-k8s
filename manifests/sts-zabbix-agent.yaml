@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  namespace: zabbix
+  labels:
+    zabbix-app: zabbix-agent
+  name: zabbix-agent
+spec:
+  serviceName: "zabbix-agent"
+  replicas: 1
+  selector:
+    matchLabels:
+     zabbix-app: zabbix-agent
+  template:
+    metadata:
+      labels:
+        zabbix-app: zabbix-agent
+    spec:   
+      containers:
+      - env:
+        - name: ZBX_SERVER_HOST
+          valueFrom:
+            configMapKeyRef:
+              key: ZBX_SERVER_HOST
+              name: zabbix-app
+        - name: ZBX_PASSIVESERVERS
+          value: "0.0.0.0/0"
+        - name: ZBX_HOSTNAME
+          valueFrom:
+            configMapKeyRef:
+              key: ZBX_HOSTNAME
+              name: zabbix-app
+        image: zabbix/zabbix-agent2:6.2.7-alpine
+        name: zabbix-agent
+        ports:
+        - containerPort: 10050
+        resources: {}
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - mountPath: /etc/zabbix/zabbix_agentd.d
+          name: zabbix-agent-claim
+          readOnly: true
+      restartPolicy: Always
+      volumes:
+      - name: zabbix-agent-claim
+        persistentVolumeClaim:
+          claimName: zabbix-agent-claim
+          readOnly: true
