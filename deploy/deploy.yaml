@@ -15,7 +15,7 @@ data:
   ZBX_JAVAGATEWAY_ENABLE: "true"
   ZBX_STARTJAVAPOLLERS: "1"
   ZBX_STARTHTTPPOLLERS: "10"
-  ZBX_SERVER_NAME: Composed installation
+  ZBX_SERVER_NAME: Zabbix Server
   ZBX_SERVER_HOST: "zabbix-server"
   ZBX_SERVER_PORT: "10051"
   DB_SERVER_HOST: "mysql-server"
@@ -29,9 +29,9 @@ metadata:
   name: zabbix-app
   namespace: zabbix
 data:
-  MYSQL_USER: y6v2eYFgm5MjtUpF
-  MYSQL_ROOT_PASSWORD: 3A0b38ae2N1kwZca
-  MYSQL_PASSWORD: y6v2eYFgm5MjtUpF
+  MYSQL_USER: emFiYml4
+  MYSQL_ROOT_PASSWORD: cm9vdF9wd2Q=
+  MYSQL_PASSWORD: emFiYml4
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -55,7 +55,7 @@ spec:
         - image: mysql:8.0.32
           name: mysql-server
           args:
-            - "--default-authentication-plugin=mysql_native_password"
+            - --default-authentication-plugin=mysql_native_password
             - --character-set-server=utf8
             - --collation-server=utf8_bin
           env:
@@ -186,13 +186,13 @@ spec:
           privileged: true
         volumeMounts:
         - mountPath: /etc/zabbix/zabbix_agentd.d
-          name: zabbix-agent-claim2
+          name: zabbix-agent-claim
           readOnly: true
       restartPolicy: Always
       volumes:
-      - name: zabbix-agent-claim2
+      - name: zabbix-agent-claim
         persistentVolumeClaim:
-          claimName: zabbix-agent-claim2
+          claimName: zabbix-agent-claim
           readOnly: true
 ---
 apiVersion: v1
@@ -216,7 +216,7 @@ metadata:
   namespace: zabbix
   labels:
      zabbix-app: zabbix-agent
-  name: zabbix-agent-claim2
+  name: zabbix-agent-claim
 spec:
   accessModes:
   - ReadOnlyMany
@@ -242,10 +242,14 @@ spec:
       labels:
         zabbix-app: zabbix-server
     spec:
+      securityContext:
+          runAsUser: 0
       containers:
-      - image: zabbix/zabbix-server-mysql:6.2.7-alpine
+      - image: zabbix/zabbix-server-mysql:6.2.7-ubuntu
         name: zabbix-server
         env:
+          - name: DB_SERVER_HOST
+            value: mysql-server.zabbix.svc.cluster.local
           - name: ZBX_STARTHTTPPOLLERS
             valueFrom:
               configMapKeyRef:
@@ -338,7 +342,7 @@ spec:
             configMapKeyRef:
               key: ZBX_SERVER_NAME
               name: zabbix-app
-        image: zabbix/zabbix-web-apache-mysql:6.2.7-ubuntu
+        image: zabbix/zabbix-web-apache-mysql:6.2.7-alpine
         startupProbe:
           httpGet:
             path: /
